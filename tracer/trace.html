@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cursive — trace the path</title>
+<style>
+  :root{
+    --bg:#191410; --panel:#241d17; --line:#3a2f26; --ink:#F3EBE0;
+    --dim:#A2917E; --hot:#E89B6A; --go:#4FBF8B; --stop:#E4674A;
+    --paper:#FFFDF8;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    display:flex;flex-direction:column;overflow:hidden}
+  header{display:flex;align-items:center;gap:14px;padding:10px 16px;
+    background:var(--panel);border-bottom:1px solid var(--line);flex:none}
+  header h1{font-size:15px;margin:0;font-weight:800;letter-spacing:.02em}
+  .glyph{font-size:26px;font-weight:800;color:var(--hot);min-width:2ch;text-align:center}
+  .spacer{flex:1}
+  button{background:#2f2620;border:1px solid var(--line);color:var(--ink);
+    border-radius:8px;padding:6px 11px;font-size:13px;font-weight:600;cursor:pointer}
+  button:hover{border-color:var(--hot)}
+  button.warn:hover{border-color:var(--stop);color:var(--stop)}
+  .save{font-size:12px;color:var(--dim);min-width:15ch;text-align:right}
+  .save.on{color:var(--go)}
+  main{flex:1;display:flex;min-height:0}
+  #stage{flex:1;position:relative;background:var(--paper);min-width:0}
+  canvas{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair;
+    touch-action:none}
+  aside{width:262px;flex:none;background:var(--panel);border-left:1px solid var(--line);
+    display:flex;flex-direction:column;min-height:0}
+  aside h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;
+    color:var(--dim);margin:14px 14px 7px}
+  #strokes{padding:0 10px;overflow:auto;max-height:34vh}
+  .st{display:flex;align-items:center;gap:9px;padding:6px 9px;border-radius:8px;
+    cursor:pointer;border:1px solid transparent}
+  .st:hover{background:#2c241d}
+  .st.sel{border-color:var(--hot);background:#2c241d}
+  .sw{width:15px;height:15px;border-radius:4px;flex:none}
+  .st .n{font-weight:700}
+  .st .c{color:var(--dim);font-size:12px;margin-left:auto}
+  .st .p{color:var(--go);font-size:11px;font-weight:700}
+  #grid{display:grid;grid-template-columns:repeat(9,1fr);gap:3px;padding:0 12px 12px}
+  .cell{aspect-ratio:1;display:flex;align-items:center;justify-content:center;
+    border-radius:5px;background:#2b231c;color:var(--dim);font-size:12px;
+    font-weight:700;cursor:pointer;border:1px solid transparent}
+  .cell:hover{border-color:var(--hot)}
+  .cell.done{background:#1F5C43;color:#CDEBDC}
+  .cell.now{border-color:var(--hot);color:var(--hot)}
+  .keys{padding:10px 14px 16px;color:var(--dim);font-size:12px;line-height:1.75;
+    border-top:1px solid var(--line);margin-top:auto}
+  .keys b{color:var(--ink);font-weight:700}
+  kbd{background:#2f2620;border:1px solid var(--line);border-radius:4px;
+    padding:1px 5px;font:600 11px ui-monospace,Menlo,monospace;color:var(--ink)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Trace the path</h1>
+  <button id="prev">←</button>
+  <div class="glyph" id="ch">A</div>
+  <button id="next">→</button>
+  <button id="newst">New stroke <kbd>N</kbd></button>
+  <button id="press">Press dot <kbd>P</kbd></button>
+  <button id="lift">Lift pen <kbd>L</kbd></button>
+  <button id="undo">Undo <kbd>U</kbd></button>
+  <button id="clear" class="warn">Clear letter</button>
+  <div class="spacer"></div>
+  <label style="color:var(--dim);font-size:12px">
+    <input type="checkbox" id="smooth" checked> smooth
+  </label>
+  <label style="color:var(--dim);font-size:12px">
+    <input type="checkbox" id="showbackdrop" checked> backdrop
+  </label>
+  <div class="save" id="save">—</div>
+</header>
+
+<main>
+  <div id="stage"><canvas id="cv"></canvas></div>
+  <aside>
+    <h2>Strokes</h2>
+    <div id="strokes"></div>
+    <h2>Letters</h2>
+    <div id="grid"></div>
+    <div class="keys">
+      <b>Click</b> adds the next point.<br>
+      <b>Drag</b> a point to move it.<br>
+      <b>Alt-click</b> a point deletes it.<br>
+      <kbd>N</kbd> next stroke &nbsp; <kbd>P</kbd> press dot<br>
+      <kbd>L</kbd> lift the pen before this stroke<br>
+      <kbd>U</kbd> undo point &nbsp; <kbd>⌫</kbd> drop stroke<br>
+      <kbd>←</kbd> <kbd>→</kbd> letters &nbsp; <kbd>1</kbd>–<kbd>9</kbd> pick stroke
+    </div>
+  </aside>
+</main>
+
+<script>
+const ORDER = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz".split('');
+const PAL = ['#C0392B','#2874A6','#1E8449','#B9770E','#7D3C98','#117A65',
+             '#A93226','#1A5276'];
+let META = {}, DATA = {}, ch = 'A', sel = 0, imgs = {};
+let drag = null, saveTimer = null, loaded = false;
+
+const cv = document.getElementById('cv'), g = cv.getContext('2d');
+const $ = id => document.getElementById(id);
+
+let view = {s:1, ox:0, oy:0};
+
+function fit(){
+  const m = META[ch]; if(!m) return;
+  const dpr = window.devicePixelRatio || 1;
+  const r = cv.parentElement.getBoundingClientRect();
+  cv.width = Math.round(r.width*dpr); cv.height = Math.round(r.height*dpr);
+  g.setTransform(dpr,0,0,dpr,0,0);
+  const pad = 34;
+  const s = Math.min((r.width-pad*2)/m.w, (r.height-pad*2)/m.h);
+  view = {s, ox:(r.width-m.w*s)/2, oy:(r.height-m.h*s)/2, W:r.width, H:r.height};
+}
+const cell2screen = (x,y) => [view.ox+x*view.s, view.oy+y*view.s];
+const screen2cell = (x,y) => [(x-view.ox)/view.s, (y-view.oy)/view.s];
+function rule2cell(p){ const m=META[ch]; return [m.left+p[0]*m.unit, m.top+p[1]*m.unit]; }
+function cell2rule(x,y){ const m=META[ch]; return [(x-m.left)/m.unit, (y-m.top)/m.unit]; }
+function rule2screen(p){ const c=rule2cell(p); return cell2screen(c[0],c[1]); }
+
+function strokes(){
+  if(!DATA[ch]) DATA[ch] = {strokes:[]};
+  return DATA[ch].strokes;
+}
+function cur(){
+  const st = strokes();
+  if(!st.length){ st.push({pts:[],press:false}); sel = 0; }
+  if(sel >= st.length) sel = st.length-1;
+  return st[sel];
+}
+function save(shrink){
+  if(!loaded) return;
+  clearTimeout(saveTimer);
+  $('save').textContent = 'saving…'; $('save').className = 'save';
+  saveTimer = setTimeout(async () => {
+    const r = await fetch('/traced.json' + (shrink ? '?shrink=1' : ''),
+      {method:'POST', headers:{'Content-Type':'application/json'},
+       body: JSON.stringify(DATA)});
+    const j = await r.json();
+    if(!r.ok){
+      $('save').textContent = `NOT SAVED — ${j.onDisk} on disk`;
+      $('save').style.color = '#E4674A';
+      alert(`Refused to save.\n\nThe file has ${j.onDisk} letters and this `
+        + `page has ${j.posted}. Nothing was overwritten. Reload the page.`);
+      return;
+    }
+    $('save').textContent = `saved · ${j.letters}/52 letters`;
+    $('save').className = 'save on'; $('save').style.color = '';
+  }, 260);
+}
+
+function catmull(pts){
+  if(pts.length < 3) return pts.map(p=>['L',p]);
+  const d = (a,b) => Math.hypot(b[0]-a[0], b[1]-a[1]) ** 0.5 || 1e-6;
+  const out = [['M', pts[0]]];
+  for(let i=0;i<pts.length-1;i++){
+    const p0 = pts[i-1]||pts[i], p1 = pts[i], p2 = pts[i+1], p3 = pts[i+2]||pts[i+1];
+    const d1 = d(p0,p1), d2 = d(p1,p2), d3 = d(p2,p3);
+    const b1 = [], b2 = [];
+    for(const k of [0,1]){
+      let a = (d1*d1*p2[k] - d2*d2*p0[k] + (2*d1*d1 + 3*d1*d2 + d2*d2)*p1[k])
+              / (3*d1*(d1+d2));
+      let b = (d3*d3*p1[k] - d2*d2*p3[k] + (2*d3*d3 + 3*d3*d2 + d2*d2)*p2[k])
+              / (3*d3*(d3+d2));
+      b1[k] = a; b2[k] = b;
+    }
+    out.push(['C', b1, b2, p2]);
+  }
+  return out;
+}
+function path(pts, smooth){
+  g.beginPath();
+  if(!pts.length) return;
+  if(!smooth || pts.length<3){
+    g.moveTo(pts[0][0],pts[0][1]);
+    for(let i=1;i<pts.length;i++) g.lineTo(pts[i][0],pts[i][1]);
+    return;
+  }
+  const segs = catmull(pts);
+  g.moveTo(segs[0][1][0], segs[0][1][1]);
+  for(const s of segs.slice(1))
+    g.bezierCurveTo(s[1][0],s[1][1], s[2][0],s[2][1], s[3][0],s[3][1]);
+}
+function arrow(a,b,col){
+  const an = Math.atan2(b[1]-a[1], b[0]-a[0]);
+  g.strokeStyle = col; g.lineWidth = 2.4;
+  for(const s of [1,-1]){
+    g.beginPath(); g.moveTo(b[0],b[1]);
+    g.lineTo(b[0]-11*Math.cos(an-s*0.5), b[1]-11*Math.sin(an-s*0.5)); g.stroke();
+  }
+}
+function draw(){
+  const m = META[ch]; if(!m) return;
+  g.clearRect(0,0,view.W,view.H);
+  g.fillStyle = '#FFFDF8'; g.fillRect(0,0,view.W,view.H);
+
+  if($('showbackdrop').checked && imgs[ch] && imgs[ch].complete){
+    g.globalAlpha = 0.8;
+    g.drawImage(imgs[ch], view.ox, view.oy, m.w*view.s, m.h*view.s);
+    g.globalAlpha = 1;
+  }
+  for(const [k,col,dash] of [['top','#C9B9A2',[]],['mid','#D8CBB6',[6,6]],
+                             ['base','#C9B9A2',[]]]){
+    const y = cell2screen(0, m[k])[1];
+    g.strokeStyle = col; g.lineWidth = 1.5; g.setLineDash(dash);
+    g.beginPath(); g.moveTo(view.ox-10, y); g.lineTo(view.ox+m.w*view.s+10, y); g.stroke();
+  }
+  g.setLineDash([]);
+
+  const st = strokes();
+  st.forEach((s,i) => {
+    const col = PAL[i%PAL.length], on = i===sel;
+    const pts = s.pts.map(rule2screen);
+    if(s.press){
+      if(pts.length){
+        g.fillStyle = col; g.beginPath();
+        g.arc(pts[0][0],pts[0][1], on?11:8, 0, 7); g.fill();
+      }
+    } else if(pts.length > 1){
+      g.strokeStyle = col; g.lineWidth = on ? 4.5 : 2.6;
+      g.globalAlpha = on ? 1 : 0.65;
+      path(pts, $('smooth').checked); g.stroke();
+      g.globalAlpha = 1;
+      const q = pts.length>2 ? Math.floor(pts.length*0.55) : 1;
+      arrow(pts[q-1], pts[q], col);
+      arrow(pts[pts.length-2], pts[pts.length-1], col);
+    }
+    if(pts.length){
+      const down = i===0 || s.lift || s.press;
+      g.fillStyle = down ? '#1F7A5C' : '#FFFDF8';
+      g.strokeStyle = down ? '#fff' : '#1F7A5C'; g.lineWidth=2.5;
+      g.beginPath(); g.arc(pts[0][0],pts[0][1],6,0,7); g.fill(); g.stroke();
+      if(pts.length>1 && !s.press){
+        g.fillStyle = '#C44B27';
+        g.beginPath();
+        g.rect(pts[pts.length-1][0]-5, pts[pts.length-1][1]-5, 10, 10);
+        g.fill(); g.stroke();
+      }
+    }
+    if(on) pts.forEach((p,k) => {
+      if(k===0 || k===pts.length-1) return;
+      g.fillStyle = col; g.strokeStyle = '#fff'; g.lineWidth = 1.6;
+      g.beginPath(); g.arc(p[0],p[1],4.5,0,7); g.fill(); g.stroke();
+    });
+    if(pts.length){
+      const mid = pts[Math.floor(pts.length/2)];
+      g.font = '700 20px -apple-system,Helvetica,Arial';
+      g.lineWidth = 4; g.strokeStyle = '#FFFDF8';
+      g.strokeText(String(i+1), mid[0]+9, mid[1]-7);
+      g.fillStyle = col; g.fillText(String(i+1), mid[0]+9, mid[1]-7);
+    }
+  });
+  paint();
+}
+
+function paint(){
+  $('ch').textContent = ch;
+  const st = strokes();
+  $('strokes').innerHTML = st.map((s,i)=>
+    `<div class="st ${i===sel?'sel':''}" data-i="${i}">
+       <div class="sw" style="background:${PAL[i%PAL.length]}"></div>
+       <div class="n">${i+1}</div>
+       ${s.press?'<div class="p">PRESS</div>':''}
+       ${s.lift&&!s.press?'<div class="p" style="color:var(--stop)">LIFT</div>':''}
+       <div class="c">${s.pts.length} pts</div>
+     </div>`).join('') || '<div style="color:var(--dim);padding:6px 9px">click to start</div>';
+  [...document.querySelectorAll('.st')].forEach(e =>
+    e.onclick = () => { sel = +e.dataset.i; draw(); });
+  $('grid').innerHTML = ORDER.map(c=>{
+    const n = (DATA[c]?.strokes||[]).filter(s=>s.pts.length).length;
+    return `<div class="cell ${n?'done':''} ${c===ch?'now':''}" data-c="${c}"
+              title="${n} stroke(s)">${c}</div>`;}).join('');
+  [...document.querySelectorAll('.cell')].forEach(e =>
+    e.onclick = () => go(e.dataset.c));
+}
+
+function hit(sx, sy){
+  const st = strokes();
+  for(let i=st.length-1;i>=0;i--)
+    for(let k=st[i].pts.length-1;k>=0;k--){
+      const p = rule2screen(st[i].pts[k]);
+      if((p[0]-sx)**2 + (p[1]-sy)**2 < 121) return [i,k];
+    }
+  return null;
+}
+const MOVED = 4;
+let down = null;
+cv.addEventListener('pointerdown', e => {
+  const r = cv.getBoundingClientRect();
+  const sx = e.clientX-r.left, sy = e.clientY-r.top;
+  const h = hit(sx, sy);
+  if(h && e.altKey){
+    strokes()[h[0]].pts.splice(h[1],1); save(); draw(); return;
+  }
+  down = {sx, sy, h, moved:false, id:e.pointerId};
+});
+cv.addEventListener('pointermove', e => {
+  if(!down) return;
+  const r = cv.getBoundingClientRect();
+  const sx = e.clientX-r.left, sy = e.clientY-r.top;
+  if(!down.moved && Math.hypot(sx-down.sx, sy-down.sy) < MOVED) return;
+  if(!down.h){ down = null; return; }
+  if(!down.moved){
+    down.moved = true; sel = down.h[0];
+    try { cv.setPointerCapture(down.id); } catch {}
+  }
+  const c = screen2cell(sx, sy);
+  strokes()[down.h[0]].pts[down.h[1]] = cell2rule(c[0],c[1]).map(v=>+v.toFixed(4));
+  draw();
+});
+cv.addEventListener('pointerup', e => {
+  if(!down) return;
+  const d = down; down = null;
+  if(d.moved) { try { cv.releasePointerCapture(d.id); } catch {} }
+  if(d.moved){ save(); return; }
+  const c = screen2cell(d.sx, d.sy);
+  cur().pts.push(cell2rule(c[0],c[1]).map(v=>+v.toFixed(4)));
+  save(); draw();
+});
+cv.addEventListener('pointercancel', () => { down = null; });
+cv.addEventListener('contextmenu', e => e.preventDefault());
+
+function newStroke(){
+  const st = strokes();
+  if(st.length && !st[st.length-1].pts.length){ sel = st.length-1; return draw(); }
+  const prev = st[st.length-1];
+  const seed = (prev && !prev.press && !prev.lift && prev.pts.length)
+    ? [prev.pts[prev.pts.length-1].slice()] : [];
+  st.push({pts:seed, press:false, lift:!seed.length}); sel = st.length-1;
+  save(); draw();
+}
+function toggleLift(){
+  const st = strokes(), s = cur();
+  s.lift = !s.lift;
+  const prev = sel > 0 ? st[sel-1] : null;
+  const join = prev && prev.pts.length ? prev.pts[prev.pts.length-1] : null;
+  if(!join){ save(); return draw(); }
+  if(s.lift){
+    if(s.pts.length && s.pts[0][0]===join[0] && s.pts[0][1]===join[1])
+      s.pts.shift();
+  } else {
+    const j = join.slice();
+    if(!s.pts.length) s.pts = [j];
+    else if(s.pts[0][0]!==j[0] || s.pts[0][1]!==j[1]) s.pts.unshift(j);
+  }
+  save(); draw();
+}
+function go(c){
+  ch = c; sel = Math.max(0,(DATA[ch]?.strokes||[]).length-1);
+  fit(); draw();
+}
+$('prev').onclick = () => go(ORDER[(ORDER.indexOf(ch)+ORDER.length-1)%ORDER.length]);
+$('next').onclick = () => go(ORDER[(ORDER.indexOf(ch)+1)%ORDER.length]);
+$('newst').onclick = newStroke;
+$('undo').onclick = () => {
+  const s = cur();
+  if(s.pts.length) s.pts.pop();
+  else if(strokes().length>1){ strokes().splice(sel,1); sel=Math.max(0,sel-1); }
+  save(); draw();
+};
+$('press').onclick = () => {
+  const s = cur(); s.press = !s.press;
+  if(s.press){ s.lift = true; if(s.pts.length > 1) s.pts = [s.pts[s.pts.length-1]]; }
+  save(); draw();
+};
+$('lift').onclick = toggleLift;
+$('clear').onclick = () => {
+  if(!confirm(`Clear every stroke on "${ch}"?`)) return;
+  DATA[ch] = {strokes:[]}; sel = 0; save(true); draw();
+};
+$('smooth').onchange = draw;
+$('showbackdrop').onchange = draw;
+
+addEventListener('keydown', e => {
+  if(e.target.tagName === 'INPUT') return;
+  const k = e.key.toLowerCase();
+  if(k==='n' || e.key==='Enter'){ e.preventDefault(); newStroke(); }
+  else if(k==='u' || (k==='z' && (e.metaKey||e.ctrlKey))){ e.preventDefault(); $('undo').click(); }
+  else if(k==='p'){ $('press').click(); }
+  else if(k==='l'){ e.preventDefault(); toggleLift(); }
+  else if(e.key==='Backspace'){ e.preventDefault();
+    if(strokes().length){ strokes().splice(sel,1); sel=Math.max(0,sel-1); save(); draw(); } }
+  else if(e.key==='ArrowLeft' || k===','){ $('prev').click(); }
+  else if(e.key==='ArrowRight' || k==='.'){ $('next').click(); }
+  else if(k>='1' && k<='9'){ const i=+k-1; if(i<strokes().length){ sel=i; draw(); } }
+});
+addEventListener('resize', () => { fit(); draw(); });
+
+(async function(){
+  try {
+    META = await (await fetch('/meta')).json();
+    DATA = await (await fetch('/traced.json')).json();
+    loaded = true;
+  } catch (e) {
+    document.body.innerHTML = '<div style="padding:40px;font:16px system-ui">'
+      + 'Could not load. <b>Nothing has been saved or lost.</b><br>Is the '
+      + 'server running? <code>python3 tracer/trace_server.py</code><br><br>' + e + '</div>';
+    return;
+  }
+  if(!ORDER.some(c => META[c].backdrop))
+    $('showbackdrop').parentElement.style.display = 'none';
+  for(const c of ORDER){
+    if(!META[c].backdrop) continue;
+    const im = new Image();
+    im.src = '/backdrops/' + META[c].key + '.png';
+    im.onload = () => { if(c===ch) draw(); };
+    imgs[c] = im;
+  }
+  go('A');
+})();
+</script>
+</body>
+</html>

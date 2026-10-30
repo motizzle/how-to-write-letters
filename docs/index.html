@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How to write letters in English and Hebrew</title>
+<style>
+  :root{
+    --page:#F6F1E7; --paper:#FFFDF8; --edge:#E4D9C6; --ink:#2A241D;
+    --muted:#6B5F52; --shape:#EAE1D1; --rule:#CDBFA8; --go:#1F7A5C;
+    --hot:#B4532A;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--page);color:var(--ink);
+    font:16px/1.5 system-ui,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif}
+  .wrap{max-width:1000px;margin:0 auto;padding:22px 18px 40px}
+  h1{font-size:22px;margin:0;letter-spacing:.01em}
+  .lede{color:var(--muted);margin:4px 0 18px;max-width:62ch}
+  .main{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:22px;align-items:start}
+  @media (max-width:760px){ .main{grid-template-columns:minmax(0,1fr)} }
+  .paper{background:var(--paper);border:1px solid var(--edge);border-radius:14px;
+    box-shadow:0 1px 0 #fff inset,0 6px 18px rgba(80,60,30,.07);padding:10px}
+  #stage{width:100%;height:auto;display:block;max-height:72vh}
+  .bar{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
+  .caption{font-weight:700;font-size:18px;margin-right:auto}
+  .caption small{font-weight:500;color:var(--muted);font-size:14px;margin-left:6px}
+  button{font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--edge);
+    border-radius:10px;padding:7px 12px;cursor:pointer;min-height:40px}
+  button:hover{border-color:var(--hot)}
+  button:focus-visible{outline:3px solid var(--hot);outline-offset:2px}
+  .seg{display:flex;border:1px solid var(--edge);border-radius:11px;overflow:hidden;
+    background:var(--paper);margin-bottom:16px}
+  .seg button{flex:1;border:0;border-radius:0;min-height:42px;font-weight:600}
+  .seg button+button{border-left:1px solid var(--edge)}
+  .seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);
+    margin:0 0 8px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(40px,1fr));gap:6px}
+  .grid button{padding:0;min-height:42px;font-size:18px;font-weight:600}
+  .grid button[aria-current="true"]{background:var(--hot);border-color:var(--hot);color:#fff}
+  .legend{margin:18px 0 0;padding:0;list-style:none;color:var(--muted);font-size:14px}
+  .legend li{display:flex;align-items:center;gap:8px;margin:4px 0}
+  .legend svg{flex:none}
+  footer{margin-top:28px;color:var(--muted);font-size:14px}
+  footer a{color:var(--ink)}
+  .err{padding:30px;color:var(--hot)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>How to write letters in English and Hebrew</h1>
+  <p class="lede">How each letter is written: the strokes in order, and the
+    direction of each one. Every line and arrow here is read from the JSON in
+    <code>docs/data/</code>.</p>
+
+  <div class="main">
+    <div>
+      <div class="paper">
+        <svg id="stage" role="img" aria-labelledby="stage-label"
+             xmlns="http://www.w3.org/2000/svg"><title id="stage-label"></title></svg>
+      </div>
+      <div class="bar">
+        <div class="caption" id="caption" aria-live="polite"></div>
+        <button id="prev" aria-label="Previous letter">&larr;</button>
+        <button id="replay">Replay</button>
+        <button id="next" aria-label="Next letter">&rarr;</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="seg" role="group" aria-label="Alphabet" id="alphabets"></div>
+      <h2 id="letters-h">Letters</h2>
+      <div class="grid" id="grid" role="group" aria-labelledby="letters-h"></div>
+      <ul class="legend">
+        <li><svg width="22" height="22" viewBox="-11 -11 22 22" aria-hidden="true"><circle r="9" fill="#1F7A5C"/><text y="4.5" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">1</text></svg>
+          the pencil goes down here</li>
+        <li><svg width="22" height="22" viewBox="-11 -11 22 22" aria-hidden="true"><circle r="8" fill="#FFFDF8" stroke="#1F7A5C" stroke-width="2"/><text y="4.5" text-anchor="middle" font-size="12" font-weight="700" fill="#1F7A5C">2</text></svg>
+          the next movement, without lifting</li>
+        <li><svg width="22" height="22" viewBox="-11 -11 22 22" aria-hidden="true"><line x1="-6" x2="6" y1="0" y2="0" stroke="#2A241D" stroke-width="12" stroke-linecap="round"/><path d="M5 0 L-3 -4.5 L-3 4.5 Z" fill="#FFFDF8"/></svg>
+          the way the pencil travels</li>
+      </ul>
+    </div>
+  </div>
+
+  <footer>By Moti Sorkin · <a href="https://github.com/motizzle">github.com/motizzle</a></footer>
+</div>
+
+<script>
+const ALPHABETS = [['print', 'Print'], ['cursive', 'Cursive'], ['hebrew', 'Hebrew']];
+const NS = 'http://www.w3.org/2000/svg';
+const $ = id => document.getElementById(id);
+const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+const docs = {};
+let doc = null, name = 'print', ch = null, run = 0;
+
+function el(tag, attrs, parent){
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+
+async function load(n){
+  if (!docs[n]) {
+    const r = await fetch('data/' + n + '.json');
+    if (!r.ok) throw new Error('data/' + n + '.json: HTTP ' + r.status);
+    docs[n] = prepare(await r.json());
+  }
+  return docs[n];
+}
+
+function prepare(d){
+  let y0 = 1, y1 = 0, wide = 0;
+  const sizes = [];
+  for (const L of Object.values(d.letters)) {
+    wide = Math.max(wide, L.aspect);
+    const nums = L.outline.match(/-?[\d.]+/g).map(Number);
+    for (let i = 1; i < nums.length; i += 2) { y0 = Math.min(y0, nums[i]); y1 = Math.max(y1, nums[i]); }
+    for (const s of L.strokes) for (const a of s.arrows) sizes.push(a.s);
+  }
+  sizes.sort((a, b) => a - b);
+  const pad = 0.05;
+  d._frame = {x: -pad, y: y0 - pad, w: wide + 2 * pad, h: y1 - y0 + 2 * pad, wide};
+  d._line = 1.5 * (sizes[sizes.length >> 1] || 0.02);
+  return d;
+}
+
+function length(pts){
+  let n = 0;
+  for (let i = 1; i < pts.length; i++) n += Math.hypot(pts[i][0] - pts[i-1][0], pts[i][1] - pts[i-1][1]);
+  return n;
+}
+
+function triangle(a, arrow){
+  const s = Math.min(a.s, a.smax);
+  const bx = a.x - a.dx * s * arrow.back, by = a.y - a.dy * s * arrow.back;
+  const nx = -a.dy, ny = a.dx, w = s * arrow.wing;
+  return `${a.x + a.dx * s},${a.y + a.dy * s} ${bx + nx * w},${by + ny * w} ${bx - nx * w},${by - ny * w}`;
+}
+
+function draw(){
+  const svg = $('stage'), L = doc.letters[ch], f = doc._frame;
+  const mine = ++run;
+  svg.querySelectorAll(':scope > g').forEach(g => g.remove());
+  svg.setAttribute('viewBox', `${f.x} ${f.y} ${f.w} ${f.h}`);
+  const root = el('g', {}, svg);
+  for (const r of doc.rules)
+    el('line', {x1: f.x, x2: f.x + f.w, y1: r.y, y2: r.y, stroke: 'var(--rule)',
+      'stroke-width': 0.004, 'stroke-dasharray': r.kind === 'mid' ? '0.02 0.016' : 'none'}, root);
+  const g = el('g', {transform: `translate(${(f.wide - L.aspect) / 2} 0)`}, root);
+  el('path', {d: L.outline, fill: 'var(--shape)'}, g);
+  const ink = el('g', {}, g), arrows = el('g', {}, g), marks = el('g', {}, g);
+  const lw = doc._line, n = L.strokes.length;
+  const count = `${n} stroke${n === 1 ? '' : 's'}`;
+  $('caption').innerHTML = `<bdi>${ch}</bdi><small>${count}</small>`;
+  $('stage-label').textContent = `How to write ${ch} (${name}): ${count}`;
+
+  const placed = [];
+  const parts = L.strokes.map((s, i) => {
+    const line = s.press
+      ? el('circle', {cx: s.points[0][0], cy: s.points[0][1], r: lw * 0.8, fill: 'var(--ink)'}, ink)
+      : el('path', {d: 'M' + s.points.map(p => p.join(' ')).join(' L'), pathLength: 1,
+                    fill: 'none', stroke: 'var(--ink)', 'stroke-width': lw,
+                    'stroke-linecap': 'round', 'stroke-linejoin': 'round'}, ink);
+    const tris = s.arrows.map(a => ({a, t: el('polygon', {points: triangle(a, doc.arrow),
+                                                            fill: 'var(--paper)'}, arrows)}));
+    const p = s.points[0], q = s.points[1] || p, r = 0.024;
+    const d = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1;
+    const at = (b) => [p[0] - (q[0] - p[0]) / d * b, p[1] - (q[1] - p[1]) / d * b];
+    let back = s.press ? 0 : r * 1.25, m = at(back);
+    while (placed.some(o => Math.hypot(o[0] - m[0], o[1] - m[1]) < r * 2.2) && back < r * 12) m = at(back += r * 0.5);
+    placed.push(m);
+    const mark = el('g', {transform: `translate(${m[0]} ${m[1]})`}, marks);
+    el('circle', {r, fill: s.lift ? 'var(--go)' : 'var(--paper)', stroke: 'var(--go)',
+      'stroke-width': s.lift ? 0 : r * 0.22}, mark);
+    el('text', {y: r * 0.36, 'text-anchor': 'middle', 'font-size': r * 1.05, 'font-weight': 700,
+      fill: s.lift ? '#fff' : 'var(--go)',
+      'font-family': 'system-ui,-apple-system,Helvetica,Arial,sans-serif'}, mark).textContent = i + 1;
+    const ms = s.press ? 350 : Math.min(doc.walk.maxMs,
+      Math.max(doc.walk.minMs, length(s.points) / doc.walk.speed * 1000));
+    return {s, line, tris, mark, ms};
+  });
+
+  if (reduce.matches) return;
+
+  for (const p of parts) {
+    p.line.style.visibility = p.mark.style.visibility = 'hidden';
+    for (const t of p.tris) t.t.style.visibility = 'hidden';
+  }
+  let i = 0, t0 = performance.now();
+  function tick(now){
+    if (mine !== run) return;
+    const p = parts[i], u = Math.min(1, (now - t0) / p.ms);
+    p.line.style.visibility = p.mark.style.visibility = 'visible';
+    if (p.s.press) p.line.setAttribute('r', lw * 0.8 * u);
+    else p.line.setAttribute('stroke-dasharray', `${u} 2`);
+    for (const t of p.tris) if (t.a.u <= u) t.t.style.visibility = 'visible';
+    if (now - t0 >= p.ms + (i < parts.length - 1 ? doc.walk.holdMs : 0)) {
+      p.line.removeAttribute('stroke-dasharray');
+      if (++i >= parts.length) return;
+      t0 = now;
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+function paintControls(){
+  $('alphabets').replaceChildren(...ALPHABETS.map(([key, label]) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.setAttribute('aria-pressed', key === name);
+    b.onclick = () => show(key, null);
+    return b;
+  }));
+  const grid = $('grid');
+  grid.dir = name === 'hebrew' ? 'rtl' : 'ltr';
+  grid.replaceChildren(...Object.keys(doc.letters).map(c => {
+    const b = document.createElement('button');
+    b.textContent = c;
+    b.lang = name === 'hebrew' ? 'he' : 'en';
+    b.setAttribute('aria-label', 'Letter ' + c);
+    b.setAttribute('aria-current', c === ch);
+    b.onclick = () => show(name, c);
+    return b;
+  }));
+  $('replay').hidden = reduce.matches;
+}
+
+async function show(n, c){
+  try { doc = await load(n); }
+  catch (e) {
+    $('stage').parentElement.innerHTML = `<div class="err">Could not load the letters
+      (${e.message}). Serve this folder over HTTP, for example
+      <code>python3 -m http.server -d docs</code>.</div>`;
+    return;
+  }
+  name = n;
+  const keys = Object.keys(doc.letters);
+  ch = keys.includes(c) ? c : keys[0];
+  history.replaceState(null, '', '#' + name + '/' + encodeURIComponent(ch));
+  paintControls();
+  draw();
+}
+
+function step(k){
+  const keys = Object.keys(doc.letters);
+  show(name, keys[(keys.indexOf(ch) + k + keys.length) % keys.length]);
+}
+$('prev').onclick = () => step(-1);
+$('next').onclick = () => step(1);
+$('replay').onclick = draw;
+reduce.addEventListener('change', () => { paintControls(); draw(); });
+
+const [h0, h1] = location.hash.slice(1).split('/');
+show(ALPHABETS.some(a => a[0] === h0) ? h0 : 'print', h1 ? decodeURIComponent(h1) : 'a');
+</script>
+</body>
+</html>
