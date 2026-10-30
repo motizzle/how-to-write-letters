@@ -12,7 +12,7 @@ a demo page.
 
 ![The demo: letters in print, cursive and Hebrew drawing themselves stroke by stroke, with numbered starts and direction arrows](docs/demo.gif)
 
-Demo: [`docs/index.html`](docs/index.html). It plays each letter stroke by
+Demo: https://motizzle.github.io/how-to-write-letters/ (source: [`docs/index.html`](docs/index.html)). It plays each letter stroke by
 stroke. If your system asks for reduced motion, it shows the finished letter
 instead.
 
